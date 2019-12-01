@@ -1,14 +1,16 @@
-#![feature(global_allocator, allocator_api, heap_api)]
+#![feature(global_allocator, allocator_api)]
 
 extern crate libc;
 extern crate time;
 
-use std::mem;
-use std::process;
-use std::fs::File;
-use std::os::unix::io::AsRawFd;
-use std::heap::{Alloc, System, Layout, AllocErr};
-use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
+use std::{
+    mem,
+    process,
+    fs::File,
+    os::unix::io::AsRawFd,
+    alloc::{GlobalAlloc, System, Layout, AllocErr},
+    sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering},
+};
 use libc::c_void;
 
 static mut TRACE_FD:i32 = -1;
@@ -23,7 +25,7 @@ impl Allocator {
     }
   }
 
-  pub fn initialize(f: &File) {
+  pub fn initialize<F: AsRawFd>(f: &F) {
     unsafe {
       TRACE_FD = f.as_raw_fd();
     }
@@ -130,17 +132,15 @@ unsafe fn print_size(address: usize, size: usize, action: Action) {
 
 }
 
-unsafe impl<'a> Alloc for &'a Allocator {
-  unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
+unsafe impl GlobalAlloc for Allocator {
+  unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
     let size = layout.size();
-    let res = System.alloc(layout);
-    if let Ok(p) = res {
-      print_size(p as usize, size, Action::Allocating);
-    }
-    res
+    let alloc = System.alloc(layout);
+    print_size(alloc as usize, size, Action::Allocating);
+    alloc
   }
 
-  unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+  unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
     print_size(ptr as usize, layout.size(), Action::Deallocating);
     System.dealloc(ptr, layout)
   }
